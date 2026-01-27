@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - CropWiseX</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+        <div class="container">
+            <a class="navbar-brand" href="/dashboard">CropWiseX Dashboard</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#" onclick="showSection('soil')">Soil</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" onclick="showSection('weather')">Weather</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" onclick="showSection('recommendation')">Recommendation</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" onclick="manualLocation()">Manual Location</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <h1>Welcome to Dashboard</h1>
+        
+        <!-- Soil Section -->
+        <div id="soil-section" class="section" style="display: none;">
+            <h2>Soil Details</h2>
+            <button onclick="fetchSoilData()" class="btn btn-primary mb-3">Fetch Soil Data</button>
+            <div id="soil-result"></div>
+        </div>
+
+        <!-- Weather Section -->
+        <div id="weather-section" class="section" style="display: none;">
+            <h2>Weather Details</h2>
+            <button onclick="fetchWeatherData()" class="btn btn-primary mb-3">Fetch Weather Data</button>
+            <div id="weather-result"></div>
+        </div>
+
+        <!-- Recommendation Section -->
+        <div id="recommendation-section" class="section" style="display: none;">
+            <h2>Crop Recommendation</h2>
+            <button onclick="fetchRecommendation()" class="btn btn-primary mb-3">Get Recommendation</button>
+            <div id="recommendation-result"></div>
+        </div>
+
+        <!-- Manual Location Section -->
+        <div id="manual-section" class="section" style="display: none;">
+            <h2>Manual Location Entry</h2>
+            <div class="row">
+                <div class="col-md-5">
+                    <input type="number" id="manual-lat" class="form-control mb-2" placeholder="Latitude" step="any">
+                </div>
+                <div class="col-md-5">
+                    <input type="number" id="manual-lon" class="form-control mb-2" placeholder="Longitude" step="any">
+                </div>
+                <div class="col-md-2">
+                    <button onclick="manualRecommendation()" class="btn btn-success w-100">Submit</button>
+                </div>
+            </div>
+            <div id="manual-result"></div>
+        </div>
+    </div>
+
+    <script>
+        function showSection(section) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+            // Show selected
+            document.getElementById(section + '-section').style.display = 'block';
+        }
+
+        async function fetchSoilData() {
+            navigator.geolocation.getCurrentPosition(async position => {
+                const response = await fetch('/save-location', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({latitude: position.coords.latitude, longitude: position.coords.longitude})
+                });
+                const data = await response.json();
+                document.getElementById('soil-result').innerHTML = `
+                    <div class="alert alert-info">
+                        <p>🌡️ Soil Temp: ${data.soil.soil_temperature}°C</p>
+                        <p>💧 Soil Moisture: ${data.soil.soil_moisture}%</p>
+                        <p>🧪 pH: ${data.soil.ph}</p>
+                        <p>🌿 N: ${data.soil.n} kg/ha</p>
+                        <p>🌱 P: ${data.soil.p} kg/ha</p>
+                        <p>🧪 K: ${data.soil.k} kg/ha</p>
+                        <p>🗺️ Soil Type: ${data.soil.soil_type}</p>
+                    </div>
+                `;
+            });
+        }
+
+        async function fetchWeatherData() {
+            navigator.geolocation.getCurrentPosition(async position => {
+                const response = await fetch('/save-location', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({latitude: position.coords.latitude, longitude: position.coords.longitude})
+                });
+                const data = await response.json();
+                document.getElementById('weather-result').innerHTML = `
+                    <div class="alert alert-info">
+                        <p>📍 Place: ${data.weather.city}</p>
+                        <p>🌡️ Temp: ${data.weather.temperature}°C</p>
+                        <p>💧 Humidity: ${data.weather.humidity}%</p>
+                        <p>☁️ Condition: ${data.weather.description}</p>
+                        <p>🌧️ Rainfall: ${data.rainfall} mm</p>
+                    </div>
+                `;
+            });
+        }
+
+        async function fetchRecommendation() {
+            navigator.geolocation.getCurrentPosition(async position => {
+                const response = await fetch('/save-location', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({latitude: position.coords.latitude, longitude: position.coords.longitude})
+                });
+                const data = await response.json();
+                document.getElementById('recommendation-result').innerHTML = `
+                    <div class="alert alert-success">
+                        <h4>🌾 Recommended Crop: ${data.crop_prediction.recommended_crop}</h4>
+                        <p>📊 Confidence: ${data.crop_prediction.confidence}%</p>
+                        <p>📊 District: ${data.district_insights.district}</p>
+                        <p>🌾 Top crops: ${data.district_insights.top_crops ? data.district_insights.top_crops.join(', ') : 'N/A'}</p>
+                        <p>📊 Estimated Yield: ${data.district_insights.estimated_yield || 'N/A'}</p>
+                    </div>
+                `;
+            });
+        }
+
+        async function manualRecommendation() {
+            const lat = parseFloat(document.getElementById('manual-lat').value);
+            const lon = parseFloat(document.getElementById('manual-lon').value);
+            if (isNaN(lat) || isNaN(lon)) {
+                alert('Please enter valid latitude and longitude');
+                return;
+            }
+            const response = await fetch('/save-location', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({latitude: lat, longitude: lon})
+            });
+            const data = await response.json();
+            document.getElementById('manual-result').innerHTML = `
+                <div class="alert alert-success">
+                    <h4>🌾 Recommended Crop: ${data.crop_prediction.recommended_crop}</h4>
+                    <p>📊 Confidence: ${data.crop_prediction.confidence}%</p>
+                    <p>📊 Soil Temp: ${data.soil.soil_temperature}°C</p>
+                    <p>💧 Soil Moisture: ${data.soil.soil_moisture}%</p>
+                    <p>🧪 pH: ${data.soil.ph}</p>
+                    <p>🌿 N: ${data.soil.n} kg/ha</p>
+                    <p>🌱 P: ${data.soil.p} kg/ha</p>
+                    <p>🧪 K: ${data.soil.k} kg/ha</p>
+                    <p>🗺️ Soil Type: ${data.soil.soil_type}</p>
+                </div>
+            `;
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

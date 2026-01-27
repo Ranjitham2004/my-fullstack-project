@@ -63,6 +63,7 @@ except Exception as e:
 try:
     rainfall_df = pd.read_csv("datasets/rainfall_data.csv")
     print("rainfall_data loaded! Rows:", len(rainfall_df))
+    print("Rainfall columns:", rainfall_df.columns.tolist())
 except Exception as e:
     print("Error loading rainfall_data:", str(e))
 
@@ -141,6 +142,54 @@ AGROMONITORING_APPID = os.getenv("AGROMONITORING_APPID")
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "message": "Welcome to CropWiseX"})
 
+@app.get("/home", response_class=HTMLResponse)
+def home_page(request: Request):
+    return templates.TemplateResponse("home.html", {"request": request})
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_page(request: Request):
+    return templates.TemplateResponse("signup.html", {"request": request})
+
+@app.get("/about", response_class=HTMLResponse)
+def about_page(request: Request):
+    return templates.TemplateResponse("about.html", {"request": request})
+
+@app.get("/contact", response_class=HTMLResponse)
+def contact_page(request: Request):
+    return templates.TemplateResponse("contact.html", {"request": request})
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_page(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.get("/soil-details", response_class=HTMLResponse)
+def soil_details_page(request: Request):
+    soil_data = {
+        "soil_temperature": 27.2,
+        "soil_moisture": 0.1,
+        "ph": 6.87,
+        "n": 20.1,
+        "p": 62.2,
+        "k": 38.8,
+        "soil_type": "Lo47-2a-3803"
+    }
+    return templates.TemplateResponse("soil_details.html", {"request": request, "soil": soil_data})
+
+@app.get("/weather-details", response_class=HTMLResponse)
+def weather_details_page(request: Request):
+    weather_data = {
+        "city": "Avadi",
+        "temperature": 25.5,
+        "humidity": 85,
+        "description": "mist",
+        "rainfall": 0.0
+    }
+    return templates.TemplateResponse("weather_details.html", {"request": request, "weather": weather_data})
+
 @app.post("/save-location")
 async def save_location(data: dict):
     lat = data.get("latitude")
@@ -168,7 +217,8 @@ async def save_location(data: dict):
         description = weather_data["weather"][0]["description"]
         city = weather_data.get("name", "Your location")
         weather_info = {"city": city, "temperature": temp, "humidity": humidity, "description": description}
-    except:
+    except Exception as e:
+        print("Weather API error:", str(e))
         return JSONResponse({"status": "error", "message": "Weather API error"}, status_code=500)
 
     # Rainfall estimation
@@ -270,13 +320,11 @@ async def save_location(data: dict):
     # From rainfall_data.csv
     if rainfall_df is not None and closest_district:
         try:
-            # Use correct column: Unnamed: 1 (district names)
             district_col = 'Unnamed: 1'
             print(f"Using rainfall district column: '{district_col}'")
             row = rainfall_df[rainfall_df[district_col].astype(str).str.strip().str.lower() == closest_district.lower()]
             if not row.empty:
-                current_month_abbr = datetime.now().strftime("%b").upper()  # e.g. "JAN"
-                # Find columns containing current month + Normal/Actual/Dev
+                current_month_abbr = datetime.now().strftime("%b").upper()
                 normal_col = next((col for col in row.columns if current_month_abbr in col and 'Normal' in col), None)
                 actual_col = next((col for col in row.columns if current_month_abbr in col and 'Actual' in col), None)
                 dev_col = next((col for col in row.columns if current_month_abbr in col and '% Dev' in col), None)
@@ -293,56 +341,41 @@ async def save_location(data: dict):
             print("Rainfall lookup error:", str(e))
             print("Available columns:", rainfall_df.columns.tolist())
 
-    # From Tamilnadu Crop-Production.csv and Tamilnadu agriculture yield data.csv — top crops by area
-    top_crops = []
-    if tn_crop_prod_df is not None and closest_district:
-        df = tn_crop_prod_df[tn_crop_prod_df['District'].str.strip().str.lower() == closest_district.lower()]
-        if not df.empty:
-            top_crops = df.groupby('Crop')['Area'].sum().nlargest(5).index.tolist()
-    if agri_yield_df is not None and closest_district:
-        df = agri_yield_df[agri_yield_df['District_Name'].str.strip().str.lower() == closest_district.lower()]
-        if not df.empty:
-            extra_top = df.groupby('Crop')['Area'].sum().nlargest(5).index.tolist()
-            top_crops = list(set(top_crops + extra_top))[:5]
-    district_insights["top_crops"] = top_crops
-
     # From land_use.csv — cultivable area
     if land_use_df is not None and closest_district:
         try:
-            # Use correct column: Unnamed: 1 (district names)
             district_col = 'Unnamed: 1'
             print(f"Using land use district column: '{district_col}'")
             row = land_use_df[land_use_df[district_col].astype(str).str.strip().str.lower() == closest_district.lower()]
             if not row.empty:
-                # Adjust column names based on your file (look at printed columns)
-                # These are examples — replace with actual names from "Land use columns:" print
-                district_insights["net_sown_area_ha"] = row.get('Net area sown', pd.Series([None])).values[0]
-                district_insights["fallow_lands_ha"] = row.get('Fallow lands other than current fallow', pd.Series([None])).values[0]
+                # Use actual column indices from your print (adjust if needed)
+                district_insights["net_sown_area_ha"] = row.iloc[0, 2] if len(row.columns) > 2 else None
+                district_insights["fallow_lands_ha"] = row.iloc[0, 9] if len(row.columns) > 9 else None
             else:
                 print(f"No row found for district '{closest_district}' in land use data")
         except Exception as e:
             print("Land use lookup error:", str(e))
             print("Available columns:", land_use_df.columns.tolist())
 
-    # From crop_production_history.csv — historical top crops (example: top 5 by recent years)
+    # From crop_production_history.csv — historical top crops
     historical_top = []
     if crop_history_df is not None:
-        recent_cols = ['2017-18', '2018-19', '2019-20']  # adjust based on your columns
-        if all(col in crop_history_df.columns for col in recent_cols):
-            crop_history_df['recent_avg'] = crop_history_df[recent_cols].mean(axis=1, numeric_only=True)
-            historical_top = crop_history_df.nlargest(5, 'recent_avg')['Crop'].tolist()
+        try:
+            # Your columns are Unnamed: 0 to Unnamed: 11
+            # Assume Unnamed: 1 is Crop, Unnamed: 2 to Unnamed: 11 are years
+            crop_history_df['recent_avg'] = crop_history_df.iloc[:, 2:12].mean(axis=1, numeric_only=True)
+            historical_top = crop_history_df.nlargest(5, 'recent_avg').iloc[:, 1].tolist()
+        except Exception as e:
+            print("Historical crops error:", str(e))
     district_insights["historical_top_crops"] = historical_top
 
     # Predict crop
     crop_prediction = None
     if model is not None:
         try:
-            input_df = pd.DataFrame(
-                [[n, p, k, temp, humidity, ph, rainfall]],
-                columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall']
-                )
-            predicted_crop = model.predict(input_df)[0]
-            probabilities = model.predict_proba(input_df)[0]
+            input_data = [[n, p, k, temp, humidity, ph, rainfall]]
+            predicted_crop = model.predict(input_data)[0]
+            probabilities = model.predict_proba(input_data)[0]
             top_prob = max(probabilities) * 100
             crop_prediction = {
                 "recommended_crop": predicted_crop,
