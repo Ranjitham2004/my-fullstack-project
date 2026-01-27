@@ -337,9 +337,12 @@ async def save_location(data: dict):
     crop_prediction = None
     if model is not None:
         try:
-            input_data = [[n, p, k, temp, humidity, ph, rainfall]]
-            predicted_crop = model.predict(input_data)[0]
-            probabilities = model.predict_proba(input_data)[0]
+            input_df = pd.DataFrame(
+                [[n, p, k, temp, humidity, ph, rainfall]],
+                columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall']
+                )
+            predicted_crop = model.predict(input_df)[0]
+            probabilities = model.predict_proba(input_df)[0]
             top_prob = max(probabilities) * 100
             crop_prediction = {
                 "recommended_crop": predicted_crop,
