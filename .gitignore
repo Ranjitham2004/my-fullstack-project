@@ -7,3 +7,7 @@ dist/
 build/
 *.db
 static/audio/
+datasets/
+*.bil
+*.hdr
+*.blw
