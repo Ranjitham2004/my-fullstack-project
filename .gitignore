@@ -1,17 +1,106 @@
-.venv/
-venv/
+# ----------------------
+# Python
+# ----------------------
 __pycache__/
-node_modules/
-.env
-dist/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python build
 build/
+dist/
+*.egg-info/
+.eggs/
+
+# ----------------------
+# Flask / Backend
+# ----------------------
+instance/
+.webassets-cache
+
+# Database
 *.db
-static/audio/
+*.sqlite3
+
+# Logs
+*.log
+
+# ----------------------
+# Machine Learning / Data
+# ----------------------
 datasets/
+data/
+*.csv
+*.xls
+*.xlsx
+*.json (optional if large)
+
+# Large binary files
 *.bil
 *.hdr
 *.blw
-venv/
-datasets/
-*.db
+*.tif
+*.tiff
+*.h5
+*.model
+*.pkl
+*.joblib
+
+# ----------------------
+# Audio / Media
+# ----------------------
 static/audio/
+*.mp3
+*.wav
+*.ogg
+
+# Images (optional)
+*.png
+*.jpg
+*.jpeg
+
+# ----------------------
+# Node / React (Frontend)
+# ----------------------
+node_modules/
+dist/
+build/
+
+# Vite
+.vite/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----------------------
+# Environment variables
+# ----------------------
+.env
+.env.*
+
+# ----------------------
+# OS files
+# ----------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------
+# IDE / Editor
+# ----------------------
+.vscode/
+.idea/
+
+# ----------------------
+# Git
+# ----------------------
+*.lock
+.git-lfs/
+.env
+.env.*
