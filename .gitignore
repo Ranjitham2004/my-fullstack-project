@@ -86,6 +86,7 @@ yarn-error.log*
 # ----------------------
 .env
 .env.*
+!.env.example
 
 # ----------------------
 # OS files
