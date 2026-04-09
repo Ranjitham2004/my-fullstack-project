@@ -1,6 +1,9 @@
+.venv/
 venv/
 __pycache__/
 node_modules/
 .env
 dist/
 build/
+*.db
+static/audio/
