@@ -11,3 +11,7 @@ datasets/
 *.bil
 *.hdr
 *.blw
+venv/
+datasets/
+*.db
+static/audio/
