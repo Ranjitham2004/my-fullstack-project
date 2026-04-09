@@ -25,6 +25,7 @@ instance/
 
 # Database
 *.db
+!farmers.db
 *.sqlite3
 
 # Logs
@@ -33,12 +34,13 @@ instance/
 # ----------------------
 # Machine Learning / Data
 # ----------------------
-datasets/
+#datasets/
 data/
-*.csv
-*.xls
-*.xlsx
-*.json (optional if large)
+# Track dataset files required by the app
+#*.csv
+#*.xls
+#*.xlsx
+#*.json  # optional if large
 
 # Large binary files
 *.bil
