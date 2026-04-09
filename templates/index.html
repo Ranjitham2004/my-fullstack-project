@@ -3,27 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CropWiseX - Smart Farming Advisor</title>
-    <!-- Bootstrap CSS -->
+    <title>CropWiseX - Intelligent Agricultural Advisory System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { 
-            background-color: #f8f9fa; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-        }
-        .hero { 
-            background-color: #198754; 
-            color: white; 
-            padding: 60px 20px; 
-            text-align: center; 
-        }
-        #location-result { 
-            min-height: 100px; 
-            margin-top: 20px; 
-        }
-        .alert-info { 
-            margin-top: 20px; 
-        }
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .hero { background-color: #198754; color: white; padding: 60px 20px; text-align: center; }
+        #location-result { min-height: 100px; margin-top: 20px; }
         .alert-success {
             background-color: #d4edda;
             color: #155724;
@@ -32,110 +17,79 @@
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .alert-success strong {
-            color: #0f5132;
-            font-size: 1.3em;
-        }
-        .emoji {
-            font-size: 1.5em;
-            margin-right: 8px;
-        }
-        .section-title {
-            margin-top: 15px;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-        }
-        .spinner-border {
-            width: 3rem;
-            height: 3rem;
-        }
-        .reason-box {
-            background-color: #fff3cd;
-            border: 1px solid #ffeeba;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
+        .emoji { font-size: 1.5em; margin-right: 8px; }
+        .section-title { margin-top: 15px; margin-bottom: 10px; font-weight: bold; }
+        .loading-spinner { display: none; text-align: center; margin: 20px 0; }
     </style>
 </head>
 <body>
+
     <div class="hero">
-        <h1 class="display-4">{{ message }}</h1>
-        <p class="lead">AI-powered crop recommendation & farm advisory system</p>
-        <p>Supports English & Tamil • Works on mobile & desktop</p>
+        <h1 class="display-4">CropWiseX</h1>
+        <p class="lead">Intelligent Agricultural Advisory System</p>
     </div>
 
     <div class="container my-5">
         <div class="row justify-content-center">
             <div class="col-lg-8 text-center">
                 <h3>Get Hyper-Local Farming Advice</h3>
-                <p class="text-muted mb-4">
-                    Click below to allow location access. This helps us give advice based on your exact area (weather, soil region, etc.).
-                </p>
+                <p class="text-muted mb-4">Click below to allow location access or enter your address manually.</p>
 
-                <button id="getLocationBtn" class="btn btn-success btn-lg mb-3">
-                    Detect My Location (GPS)
-                </button>
+                <div class="d-flex flex-column flex-md-row justify-content-center gap-3 my-5">
+                    <!--The below line is a add on-->
+                    <a href="/hardware" class="btn btn-dark btn-lg px-5 py-3">Hardware Mode</a>
+
+                    <button id="getLocationBtn" class="btn btn-success btn-lg px-5 py-3">
+                        Detect My Location (GPS)
+                    </button>
+                    <a href="/diseasenew" class="btn btn-warning btn-lg px-5 py-3">Disease Detection</a>
+                    <a href="/chat" class="btn btn-primary btn-lg px-5 py-3">Ask CropWiseX Chatbot</a>
+                </div>
+
+                <!-- Manual Address Option -->
+                <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 10px; border: 2px dashed #198754;">
+                    <strong>Can't share location?</strong><br>
+                    <small>Enter your village/district address</small><br><br>
+                    <input type="text" id="manualAddress" placeholder="e.g. Avadi, Chennai, Tamil Nadu" 
+                           style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px;">
+                    <button onclick="analyzeManualAddress()" 
+                            style="margin-top: 10px; width: 100%; padding: 12px; background: #198754; color: white; border: none; border-radius: 8px; font-size: 16px;">
+                        Analyze Address & Get Crops
+                    </button>
+                </div>
 
                 <div class="loading-spinner" id="loadingSpinner">
-                    <div class="spinner-border text-success" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                    <div class="spinner-border text-success" role="status"></div>
                     <p class="mt-2">Fetching weather & soil data...</p>
                 </div>
 
-                <div id="location-result" class="alert alert-info" role="alert" style="display: none;">
-                    <strong>Location Status:</strong><br>
-                    <span id="locationText">Waiting for permission...</span>
-                </div>
+                <div id="location-result" class="alert alert-info" style="display: none;"></div>
 
-                <div id="error-message" class="alert alert-danger" role="alert" style="display: none;">
-                    <!-- Error will appear here -->
+                
+
                 </div>
+                <div id="error-message" class="alert alert-danger" style="display: none;"></div>
             </div>
         </div>
     </div>
 
-    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Custom JavaScript for GPS + Weather -->
     <script>
         const btn = document.getElementById('getLocationBtn');
         const resultDiv = document.getElementById('location-result');
-        const locationText = document.getElementById('locationText');
         const errorDiv = document.getElementById('error-message');
         const loadingSpinner = document.getElementById('loadingSpinner');
 
         btn.addEventListener('click', () => {
             errorDiv.style.display = 'none';
             resultDiv.style.display = 'block';
-            locationText.innerHTML = 'Detecting location...';
-            loadingSpinner.style.display = 'block';  // Show spinner
-
-            if (!navigator.geolocation) {
-                showError("Geolocation is not supported by your browser.");
-                loadingSpinner.style.display = 'none';
-                return;
-            }
+            resultDiv.innerHTML = '<strong>Detecting location...</strong>';
+            loadingSpinner.style.display = 'block';
 
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
                     const lat = position.coords.latitude.toFixed(6);
                     const lon = position.coords.longitude.toFixed(6);
-
-                    // Show coordinates immediately
-                    locationText.innerHTML = `
-                        <strong>Success!</strong><br>
-                        Latitude: ${lat}<br>
-                        Longitude: ${lon}<br>
-                        <small>Fetching weather & soil...</small>
-                    `;
 
                     try {
                         const response = await fetch('/save-location', {
@@ -145,65 +99,88 @@
                         });
 
                         const data = await response.json();
-                        console.log("Full server response:", data);
 
                         if (response.ok && data.status === "success") {
-                            locationText.innerHTML = `
+                            let html = `
                                 <strong>Location detected successfully!</strong><br>
                                 Latitude: ${lat}<br>
                                 Longitude: ${lon}<br><br>
+
                                 <div class="section-title">Current Weather:</div>
-                                <span class="emoji">📍</span> Place: ${data.weather.city || 'Your area'}<br>
-                                <span class="emoji">🌡️</span> Temperature: ${data.weather.temperature} °C<br>
-                                <span class="emoji">💧</span> Humidity: ${data.weather.humidity} %<br>
-                                <span class="emoji">☁️</span> Condition: ${data.weather.description}<br>
-                                <span class="emoji">🌧️</span> Estimated Rainfall: ${data.rainfall || '0'} mm<br><br>
+                                📍 Place: ${data.weather.city}<br>
+                                🌡️ Temperature: ${data.weather.temperature} °C<br>
+                                💧 Humidity: ${data.weather.humidity} %<br>
+                                ☁️ Condition: ${data.weather.description}<br>
+                                🌧️ Rainfall: ${data.rainfall} mm<br><br>
+
                                 <div class="section-title">Soil Conditions:</div>
-                                <span class="emoji">🌡️</span> Soil Temp: ${data.soil.soil_temperature || 'N/A'} °C<br>
-                                <span class="emoji">💧</span> Soil Moisture: ${data.soil.soil_moisture || 'N/A'} %<br>
-                                <span class="emoji">🧪</span> pH: ${data.soil.ph || 'N/A'}<br><br>
-                                🌿 Nitrogen: ${data.soil.n || 'N/A'} kg/ha<br>
-                                🌱 Phosphorus: ${data.soil.p || 'N/A'} kg/ha<br>
-                                🧪 Potassium: ${data.soil.k || 'N/A'} kg/ha<br>
-                                <span class="emoji">🗺️</span> Soil Type: ${data.soil.soil_type || 'N/A'}<br>
-                               <strong>District Insights:</strong><br>
-                               📍 District: ${data.district_insights.district || 'N/A'}<br>
-                                ${data.district_insights.normal_rainfall_mm ? `🌧️ Normal Rainfall this month: ${data.district_insights.normal_rainfall_mm} mm<br>` : ''}
-                                ${data.district_insights.top_crops && data.district_insights.top_crops.length > 0 ? `🌾 Top crops in district: ${data.district_insights.top_crops.join(', ')}<br>` : ''}
-                                ${data.district_insights.net_sown_area_ha ? `📏 Cultivable land: ${data.district_insights.net_sown_area_ha} ha<br>` : ''}
-                                ${data.district_insights.fallow_lands_ha ? `🟤 Fallow land: ${data.district_insights.fallow_lands_ha} ha<br>` : ''}
-                                ${data.district_insights.historical_top_crops && data.district_insights.historical_top_crops.length > 0 ? `📈 Historical top crops: ${data.district_insights.historical_top_crops.join(', ')}<br>` : ''}
-                                <div class="section-title">Recommended Crop:</div>
-                                <span class="emoji">🌾</span> ${data.crop_prediction.recommended_crop} <br>
-                                <small>(Confidence: ${data.crop_prediction.confidence}% based on weather + soil)</small>
-                                <div class="reason-box mt-3">
-                                    Why this crop?<br>
-                                    Moisture (${data.soil.soil_moisture}%), ${data.weather.description}, soil type ${data.soil.soil_type || 'N/A'}, pH ${data.soil.ph || 'N/A'} — ${data.crop_prediction.recommended_crop} is suitable here.
+                                🌡️ Soil Temp: ${data.soil.soil_temperature} °C<br>
+                                💧 Soil Moisture: ${data.soil.soil_moisture} %<br>
+                                🧪 pH: ${data.soil.ph}<br><br>
+                            `;
+
+                            // Primary Recommendation
+                            const primary = data.crop_prediction.recommended_crops?.[0];
+
+                            if (!primary) {
+                                showError("No crop recommendation available");
+                                return;
+                            }
+                            html += `
+                                <h4 style="color:#198754; margin-top:25px;">🌟 Primary Recommendation</h4>
+                                <div style="padding:20px; background:#e8f5e9; border:3px solid #198754; border-radius:12px; margin-bottom:25px;">
+                                    <strong style="font-size:1.4em;">${primary.crop}</strong>
+                                    <br><small><strong>Best suitable crop for your location</strong></small>
                                 </div>
                             `;
+
+                            // Other Suitable Crops (no confidence %)
+                            html += `<strong>Other Suitable Crops:</strong><br>`;
+                            data.crop_prediction.recommended_crops.slice(1).forEach((c, i) => {
+                                html += `
+                                    <div style="margin:8px 0; padding:12px; background:#f0f7f0; border-radius:8px;">
+                                        <strong>${i+1}. ${c.crop}</strong>
+                                    </div>`;
+                            });
+
+                            // Detailed Schedule for Primary Crop
+                            const d = data.district_insights || {};
+                            html += `
+                                <div style="margin-top:30px; padding:20px; background:#f8f9fa; border-radius:10px; border:1px solid #198754;">
+                                    <strong>Complete Farming Schedule for ${primary.crop}:</strong><br><br>
+                                    
+                                    <strong>Fertilizer Schedule:</strong><br>
+                                    ${d.fertilizer_advice || 'N/A'}<br><br>
+                                    
+                                    <strong>Irrigation Advice:</strong><br>
+                                    ${d.irrigation_advice || 'N/A'}<br><br>
+                                    
+                                    <strong>Harvest Time:</strong><br>
+                                    ${d.harvest_advice || 'N/A'}<br><br>
+                                    
+                                    <strong>Soil Recovery / Rotation:</strong><br>
+                                    ${d.recovery_advice || 'N/A'}<br><br>
+                                    
+                                    <strong>Estimated Profit:</strong><br>
+                                    ${d.profit_advice || 'N/A'}
+                                </div>
+                            `;
+
+                            resultDiv.innerHTML = html;
                             
-                            resultDiv.classList.remove('alert-info');
                             resultDiv.classList.add('alert-success');
-                            
-                            btn.textContent = "Refetch Data ✓";
-                            btn.disabled = false;
                         } else {
                             showError(data.message || "Unexpected response from server");
                         }
                     } catch (err) {
-                        console.error("Fetch error:", err);
                         showError("Failed to connect to server: " + err.message);
                     } finally {
-                        loadingSpinner.style.display = 'none';  // Hide spinner
+                        loadingSpinner.style.display = 'none';
                     }
                 },
                 (error) => {
                     let msg = "Unable to get location.";
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED: msg = "Location access was denied."; break;
-                        case error.POSITION_UNAVAILABLE: msg = "Location unavailable."; break;
-                        case error.TIMEOUT: msg = "Location request timed out."; break;
-                    }
+                    if (error.code === error.PERMISSION_DENIED) msg = "Location access was denied.";
                     showError(msg);
                     loadingSpinner.style.display = 'none';
                 }
@@ -216,6 +193,92 @@
             resultDiv.style.display = 'none';
             loadingSpinner.style.display = 'none';
         }
+
+        // Manual Address Function
+        async function analyzeManualAddress() {
+            const address = document.getElementById("manualAddress").value.trim();
+            if (!address) {
+                alert("Please enter your village or district address");
+                return;
+            }
+
+            loadingSpinner.style.display = 'block';
+            resultDiv.style.display = 'none';
+
+            try {
+                const res = await fetch("/save-manual-address", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ address: address })
+                });
+
+                const data = await res.json();
+
+                if (data.status === "success") {
+                    let html = `
+                        <strong>Location detected successfully!</strong><br>
+                        Place: ${data.weather.city}<br><br>
+
+                        <div class="section-title">Current Weather:</div>
+                        📍 Place: ${data.weather.city}<br>
+                        🌡️ Temperature: ${data.weather.temperature} °C<br>
+                        💧 Humidity: ${data.weather.humidity} %<br>
+                        ☁️ Condition: ${data.weather.description}<br>
+                        🌧️ Rainfall: ${data.rainfall} mm<br><br>
+
+                        <div class="section-title">Soil Conditions:</div>
+                        🌡️ Soil Temp: ${data.soil.soil_temperature} °C<br>
+                        💧 Soil Moisture: ${data.soil.soil_moisture} %<br>
+                        🧪 pH: ${data.soil.ph}<br><br>
+                    `;
+
+                    const primary = data.crop_prediction.recommended_crops[0];
+                    html += `
+                        <h4 style="color:#198754; margin-top:25px;">🌟 Primary Recommendation</h4>
+                        <div style="padding:20px; background:#e8f5e9; border:3px solid #198754; border-radius:12px; margin-bottom:25px;">
+                            <strong style="font-size:1.4em;">${primary.crop}</strong>
+                            <br><small><strong>Best suitable crop for your location</strong></small>
+                        </div>
+                    `;
+
+                    html += `<strong>Other Suitable Crops:</strong><br>`;
+                    data.crop_prediction.recommended_crops.slice(1).forEach((c, i) => {
+                        html += `
+                            <div style="margin:8px 0; padding:12px; background:#f0f7f0; border-radius:8px;">
+                                <strong>${i+1}. ${c.crop}</strong>
+                            </div>`;
+                    });
+
+                    const d = data.district_insights || {};
+                    html += `
+                        <div style="margin-top:30px; padding:20px; background:#f8f9fa; border-radius:10px; border:1px solid #198754;">
+                            <strong>Complete Farming Schedule for ${primary.crop}:</strong><br><br>
+                            <strong>Fertilizer Schedule:</strong><br>${d.fertilizer_advice || 'N/A'}<br><br>
+                            <strong>Irrigation Advice:</strong><br>${d.irrigation_advice || 'N/A'}<br><br>
+                            <strong>Harvest Time:</strong><br>${d.harvest_advice || 'N/A'}<br><br>
+                            <strong>Soil Recovery / Rotation:</strong><br>${d.recovery_advice || 'N/A'}<br><br>
+                            <strong>Estimated Profit:</strong><br>${d.profit_advice || 'N/A'}
+                        </div>
+                    `;
+
+                    resultDiv.innerHTML = html;
+                    
+                    resultDiv.classList.add('alert-success');
+                    resultDiv.style.display = 'block';
+                } else {
+                    alert("Error: " + (data.message || "Unknown error"));
+                }
+            } catch (e) {
+                alert("Could not connect to server.");
+                console.error(e);
+            } finally {
+                loadingSpinner.style.display = 'none';
+            }
+        }
+
+        // 🔥 AUTO FETCH SENSOR EVERY 3 SECONDS
+// 🔥 AUTO FETCH SENSOR EVERY 3 SECONDS
+
     </script>
+
 </body>
-</html>

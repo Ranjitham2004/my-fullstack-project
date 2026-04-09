@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CropWiseX Chatbot</title>
+
+<style>
+body {
+    font-family: Arial;
+    background: #e8f5e9;
+}
+
+h1 {
+    text-align: center;
+    color: #2e7d32;
+}
+
+.chat-container {
+    max-width: 900px; /* Increased from 700px to 900px for a wider look */
+    margin: 20px auto;
+    background: white;
+    padding: 30px; /* More padding for a premium feel */
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1); /* Optional: adds a nice soft shadow */
+}
+
+.chat-box {
+    height: 550px; /* Increased from 350px to 550px for more vertical space */
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    background: #f9f9f9;
+}
+
+.user { text-align: right; margin: 10px; }
+.bot { text-align: left; margin: 10px; }
+
+.bubble {
+    display: inline-block;
+    padding: 10px;
+    border-radius: 15px;
+    max-width: 80%;
+}
+
+.user .bubble {
+    background: #2e7d32;
+    color: white;
+}
+
+.bot .bubble {
+    background: #eeeeee;
+}
+/*
+textarea {
+    width: 100%;
+    padding: 10px;
+}
+    */
+
+button {
+    padding: 8px;
+    margin-top: 5px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.send-btn { background: rgb(47, 126, 186); color: white; width: 100%; }
+.voice-btn { background: rgb(47, 126, 186); color: white; width: 100%; }
+.read-btn { background: black; color: white; }
+.stop-btn { background: rgb(47, 126, 186); color: white; width: 100%; }
+
+
+
+
+/* New layout for Language and Input row */
+.input-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+#chat-language {
+    padding: 10px;
+    font-size: 16px; /* Enhanced size */
+    border: 2px solid #2e7d32;
+    border-radius: 8px;
+    cursor: pointer;
+    background: white;
+}
+
+textarea {
+    flex-grow: 1; /* Makes textarea fill the space */
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    resize: none;
+}
+
+/* New layout for the Button row */
+.button-group {
+    display: flex;
+    gap: 8px;
+}
+
+.button-group button {
+    flex: 1; /* Makes all 3 buttons equal width */
+    margin-top: 0;
+    font-weight: bold;
+    height: 45px; /* Comfortable height for tapping */
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>🌾 CropWiseX Chatbot</h1>
+
+<div class="chat-container">
+
+<a href="/dashboard">⬅ Back</a>
+
+<div class="chat-box" id="chat-box"></div>
+
+<div class="input-row">
+    <select id="chat-language">
+        <option value="English">English</option>
+        <option value="Tamil">தமிழ்</option>
+    </select>
+    <textarea id="chat-input" rows="2" placeholder="Ask about crops, diseases..."></textarea>
+</div>
+
+<div class="button-group">
+    <button class="voice-btn" onclick="startVoiceInput()">🎤 Speak</button>
+    <button class="send-btn" onclick="sendMessage()">Send</button>
+    <button class="stop-btn" onclick="stopSpeech()">⛔ Stop</button>
+</div>
+
+<!-- ✅ AUDIO PLAYER (FOR NATURAL VOICE) -->
+<audio id="bot-audio-player"></audio>
+
+<script>
+
+let sessionId = localStorage.getItem("session_id") || crypto.randomUUID();
+localStorage.setItem("session_id", sessionId);
+
+// =========================
+// ADD MESSAGE
+// =========================
+function addMessage(text, sender, language, audioUrl=null) {
+    const chatBox = document.getElementById("chat-box");
+
+    const div = document.createElement("div");
+    div.className = sender;
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerHTML = text.replace(/\n/g, "<br>");
+
+    div.appendChild(bubble);
+
+    // ✅ READ BUTTON ONLY FOR BOT
+    if (sender === "bot") {
+        const readBtn = document.createElement("button");
+        readBtn.innerText = "🔊";
+        readBtn.className = "read-btn";
+
+        readBtn.onclick = () => {
+            const player = document.getElementById("bot-audio-player");
+
+            if (audioUrl) {
+                player.src = audioUrl;
+                player.play();
+            } else {
+                alert("Audio not available");
+            }
+        };
+
+        div.appendChild(document.createElement("br"));
+        div.appendChild(readBtn);
+    }
+
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// =========================
+// SEND MESSAGE
+// =========================
+async function sendMessage() {
+    const input = document.getElementById("chat-input");
+    const language = document.getElementById("chat-language").value;
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    addMessage(message, "user", language);
+    input.value = "";
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                message: message,
+                session_id: sessionId,
+                language: language
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.reply) {
+            addMessage(data.reply, "bot", language, data.audio_url);
+        } else {
+            addMessage("No response", "bot", language);
+        }
+
+    } catch (err) {
+        addMessage("Server error", "bot", language);
+    }
+}
+
+// =========================
+// ENTER KEY SUPPORT
+// =========================
+document.getElementById("chat-input").addEventListener("keypress", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+// =========================
+// 🎤 VOICE INPUT
+// =========================
+function startVoiceInput() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+        alert("Use Chrome browser");
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    const language = document.getElementById("chat-language").value;
+
+    recognition.lang = (language === "Tamil") ? "ta-IN" : "en-IN";
+
+    recognition.start();
+
+    recognition.onresult = function(event) {
+        document.getElementById("chat-input").value = event.results[0][0].transcript;
+    };
+}
+
+// =========================
+// ⛔ STOP VOICE
+// =========================
+function stopSpeech() {
+    const player = document.getElementById("bot-audio-player");
+    player.pause();
+    player.currentTime = 0;
+}
+
+</script>
+
+</body>
+</html>

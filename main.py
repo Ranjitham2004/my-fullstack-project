@@ -11,6 +11,29 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from datetime import datetime
 import rasterio
+from fastapi import UploadFile, File, HTTPException, status
+from loguru import logger
+import httpx
+from typing import Tuple, List
+from fastapi import APIRouter, Request, Body, HTTPException
+from pydantic import BaseModel
+from gtts import gTTS
+import speech_recognition as sr
+from pydub import AudioSegment
+import io
+import tempfile
+import uuid
+from openai import OpenAI
+from services.voice_service import generate_voice
+import google.generativeai as genai
+
+# Latest sensor readings from ESP32 (updated by /save-sensor-data)
+latest_temperature = None
+latest_humidity = None
+latest_moisture = None
+
+load_dotenv()
+app = FastAPI()
 
 # Load soil dataset
 try:
@@ -63,7 +86,6 @@ except Exception as e:
 try:
     rainfall_df = pd.read_csv("datasets/rainfall_data.csv")
     print("rainfall_data loaded! Rows:", len(rainfall_df))
-    print("Rainfall columns:", rainfall_df.columns.tolist())
 except Exception as e:
     print("Error loading rainfall_data:", str(e))
 
@@ -130,267 +152,236 @@ if crop_df is not None:
     model.fit(X_train, y_train)
     print(f"Crop ML model trained! Accuracy: {accuracy_score(y_test, model.predict(X_test)):.2f}")
 
-load_dotenv()
-app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 AGROMONITORING_APPID = os.getenv("AGROMONITORING_APPID")
 
+# =========================
+# FRONTEND PAGE ROUTES
+# =========================
+
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "message": "Welcome to CropWiseX"})
-
-@app.get("/home", response_class=HTMLResponse)
-def home_page(request: Request):
-    return templates.TemplateResponse("home.html", {"request": request})
-
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-
-@app.get("/signup", response_class=HTMLResponse)
 def signup_page(request: Request):
-    return templates.TemplateResponse("signup.html", {"request": request})
-
-@app.get("/about", response_class=HTMLResponse)
-def about_page(request: Request):
-    return templates.TemplateResponse("about.html", {"request": request})
-
-@app.get("/contact", response_class=HTMLResponse)
-def contact_page(request: Request):
-    return templates.TemplateResponse("contact.html", {"request": request})
+    return templates.TemplateResponse("signup.html", context={"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard_page(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse("index.html", context={"request": request})
 
-@app.get("/soil-details", response_class=HTMLResponse)
-def soil_details_page(request: Request):
-    soil_data = {
-        "soil_temperature": 27.2,
-        "soil_moisture": 0.1,
-        "ph": 6.87,
-        "n": 20.1,
-        "p": 62.2,
-        "k": 38.8,
-        "soil_type": "Lo47-2a-3803"
-    }
-    return templates.TemplateResponse("soil_details.html", {"request": request, "soil": soil_data})
+@app.get("/disease", response_class=HTMLResponse)
+def disease_page(request: Request):
+    return templates.TemplateResponse("disease.html", context={"request": request})
 
-@app.get("/weather-details", response_class=HTMLResponse)
-def weather_details_page(request: Request):
-    weather_data = {
-        "city": "Avadi",
-        "temperature": 25.5,
-        "humidity": 85,
-        "description": "mist",
-        "rainfall": 0.0
-    }
-    return templates.TemplateResponse("weather_details.html", {"request": request, "weather": weather_data})
+# ────────────────────────────────────────────────
+# NEW FEATURE: Plant Disease Detection (from Plant-AI)
+# Uses HuggingFace Inference API - no local model download needed
+# ────────────────────────────────────────────────
 
-@app.post("/save-location")
-async def save_location(data: dict):
-    lat = data.get("latitude")
-    lon = data.get("longitude")
-    
-    if lat is None or lon is None:
-        return JSONResponse({"status": "error", "message": "Invalid location data"}, status_code=400)
-
+@app.post("/api/detect-disease")
+async def detect_disease(image: UploadFile = File(...)):
     try:
-        lat = float(lat)
-        lon = float(lon)
-    except:
-        return JSONResponse({"status": "error", "message": "Invalid lat/lon"}, status_code=400)
+        contents = await image.read()
 
-    print(f"Location: {lat}, {lon}")
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty image")
 
-    # Weather fetch
-    weather_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric"
-    try:
-        response = requests.get(weather_url)
-        response.raise_for_status()
-        weather_data = response.json()
-        temp = weather_data["main"]["temp"]
-        humidity = weather_data["main"]["humidity"]
-        description = weather_data["weather"][0]["description"]
-        city = weather_data.get("name", "Your location")
-        weather_info = {"city": city, "temperature": temp, "humidity": humidity, "description": description}
-    except Exception as e:
-        print("Weather API error:", str(e))
-        return JSONResponse({"status": "error", "message": "Weather API error"}, status_code=500)
+        # Convert image to base64
+        import base64
+        image_base64 = base64.b64encode(contents).decode("utf-8")
 
-    # Rainfall estimation
-    rainfall = weather_data.get('rain', {}).get('1h', 0.0)
-    if rainfall == 0:
-        desc_lower = description.lower()
-        main_cond = weather_data["weather"][0]["main"].lower()
-        if 'rain' in main_cond or 'drizzle' in desc_lower:
-            if 'light' in desc_lower or 'drizzle' in desc_lower:
-                rainfall = 1.0
-            elif 'moderate' in desc_lower:
-                rainfall = 5.0
-            elif 'heavy' in desc_lower or 'shower' in desc_lower:
-                rainfall = 15.0
-            else:
-                rainfall = 2.0
-        elif 'thunderstorm' in desc_lower:
-            rainfall = 20.0
-    print(f"Rainfall before season: {rainfall} mm")
+        # OpenRouter Vision Model
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
 
-    # AgroMonitoring soil
-    soil_info = {"ph": 7.0, "n": 200, "p": 40, "k": 160, "soil_temperature": 25.0, "soil_moisture": 30.0, "soil_type": "Unknown"}
-    try:
-        soil_url = f"https://api.agromonitoring.com/agro/1.0/soil?lat={lat}&lon={lon}&appid={AGROMONITORING_APPID}"
-        soil_response = requests.get(soil_url)
-        soil_response.raise_for_status()
-        soil_data = soil_response.json()
-        soil_moisture = soil_data.get('moisture', 30.0)
-        soil_temp_k = soil_data.get('t0', 298.15)
-        soil_temp = soil_temp_k - 273.15
-        soil_info = {
-            "ph": round(7.0, 2),
-            "n": round(200, 1),
-            "p": round(40, 1),
-            "k": round(160, 1),
-            "soil_temperature": round(soil_temp, 1),
-            "soil_moisture": round(soil_moisture, 1),
-            "soil_type": "Unknown"
+        prompt = """
+You are an expert agricultural scientist.
+
+Analyze the uploaded plant leaf image and respond strictly in this format:
+
+Crop: <crop name>
+Disease: <disease name or Healthy>
+Confidence: <percentage>
+Cause: <short reason>
+Treatment:
+- <point 1>
+- <point 2>
+- <point 3>
+
+Important:
+- Be accurate and practical
+- If unsure, say "Possible <disease>"
+- Give specific treatment (fertilizer / fungicide / organic solution)
+"""
+
+        response = client.chat.completions.create(
+            model="openai/gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=500
+        )
+
+        result_text = response.choices[0].message.content
+
+        # 🔥 Parse response
+        lines = result_text.split("\n")
+
+        crop = "Unknown"
+        disease = "Unknown"
+        confidence = "N/A"
+        recommendations = []
+
+        for line in lines:
+            if "Crop:" in line:
+                crop = line.split("Crop:")[-1].strip()
+                crop = crop.replace("Moringa", "Drumstick")
+            elif "Disease:" in line:
+                disease = line.split("Disease:")[-1].strip()
+                disease = disease.replace("Possible", "").strip()
+            elif "Confidence:" in line:
+                confidence = line.split("Confidence:")[-1].strip()
+            elif "-" in line:
+                recommendations.append(line.replace("-", "").strip())
+
+        return {
+            "status": "success",
+            "disease": f"{crop} - {disease}",
+            "confidence": confidence,
+            "recommendations": recommendations
         }
-        print(f"AgroMonitoring: Temp {soil_info['soil_temperature']}°C, Moisture {soil_info['soil_moisture']}%")
-    except Exception as e:
-        print("AgroMonitoring error:", str(e))
 
-    # HWSD soil code & name
+    except Exception as e:
+        logger.error(f"Disease detection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ────────────────────────────────────────────────
+# NEW ROUTE: Separate Disease Detection Page
+# Uses diseasenew.html to avoid conflict with existing /disease
+# ────────────────────────────────────────────────
+
+@app.get("/diseasenew")
+async def disease_new_page(request: Request):
+    return templates.TemplateResponse("diseasenew.html", context={"request": request})
+
+# Register crop router (this was missing!)
+from routers.crop_router import router
+app.include_router(router)
+
+# CHATBOT
+
+# 1. Define the Request Model ONCE (Cleaned up duplicates)
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = None
+    language: str = "English"
+
+# 2. Page Route to load the Chat Interface
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page(request: Request):
+    return templates.TemplateResponse("chat.html", context={"request": request})
+
+# 3. Main Chat API Endpoint
+@app.post("/api/chat")
+async def chat_api(request: ChatRequest):
     try:
-        with rasterio.open("datasets/hwsd/hwsd.bil") as src:
-            row, col = src.index(lon, lat)
-            soil_code = src.read(1, window=((row, row+1), (col, col+1)))[0][0]
-            print(f"HWSD code: {soil_code}")
-        lookup_df = pd.read_csv("datasets/hwsd/GLOBAL_Soil.txt")
-        soil_name = lookup_df[lookup_df['VALUE'] == soil_code]['NAME'].values
-        soil_type = soil_name[0] if len(soil_name) > 0 else "Unknown"
-        print(f"Soil type: {soil_type}")
-        soil_info["soil_type"] = soil_type
+        # Import the logic only when needed to avoid circular imports
+        from services.chatbot_service import chat_with_memory
+        from services.voice_service import generate_voice
+
+        # A. Handle Session ID
+        session_id = request.session_id or str(uuid.uuid4())
+
+        # B. Get Text Response (Your existing logic)
+        reply = await chat_with_memory(session_id, request.message)
+
+        # C. --- VOICE OVER FEATURE START ---
+        # Pick 'ta' if Tamil characters are present, else 'en'
+        is_tamil = any('\u0B80' <= ch <= '\u0BFF' for ch in reply)
+        lang_code = 'ta' if is_tamil else 'en'
+        
+        # Link to voice_service.py to create the MP3
+        audio_url = generate_voice(reply, lang_code)
+        # --- VOICE OVER FEATURE END ---
+
+        # D. Return the keys your chat.html expects
+        return {
+            "reply": reply,
+            "audio_url": audio_url,
+            "session_id": session_id
+        }
+
     except Exception as e:
-        print("HWSD error:", str(e))
-        soil_info["soil_type"] = "Unknown"
+        print(f"Chat Error: {e}")
+        return JSONResponse(
+            status_code=500, 
+            content={"reply": "I'm having trouble connecting to the AI.", "error": str(e)}
+        )
 
-    # District matching & nutrient override
-    n, p, k, ph = 200, 40, 160, 7.0
-    closest_district = None
-    if soil_avg_df is not None:
-        try:
-            min_dist = float('inf')
-            for dist_name, (d_lat, d_lon) in district_latlon.items():
-                dist = ((d_lat - lat)**2 + (d_lon - lon)**2)**0.5
-                if dist < min_dist:
-                    min_dist = dist
-                    closest_district = dist_name
-            if closest_district and closest_district.lower() == "avadi":
-                closest_district = "Chennai"
-            district_row = soil_avg_df[soil_avg_df['District'].str.lower() == closest_district.lower()]
-            if not district_row.empty:
-                n = district_row['avg_n'].values[0]
-                p = district_row['avg_p'].values[0]
-                k = district_row['avg_k'].values[0]
-                ph = district_row['avg_ph'].values[0]
-                soil_info["n"] = round(n, 1)
-                soil_info["p"] = round(p, 1)
-                soil_info["k"] = round(k, 1)
-                soil_info["ph"] = round(ph, 2)
-                print(f"District {closest_district}: N {soil_info['n']}, P {soil_info['p']}, K {soil_info['k']}, pH {soil_info['ph']}")
-        except Exception as e:
-            print("District error:", str(e))
 
-    # Season adjustment
-    month = datetime.now().month
-    if month in [10, 11, 12, 1, 2, 3]:
-        rainfall *= 0.4
-    elif month in [6, 7, 8, 9]:
-        rainfall *= 2.0
-    else:
-        rainfall *= 0.8
-    print(f"Final rainfall: {rainfall} mm")
+# ================= SENSOR DATA API =================
+from fastapi import Body
 
-    # NEW: Collect district insights from all uploaded files
-    district_insights = {"district": closest_district or "Unknown"}
+@app.post("/save-sensor-data")
+async def save_sensor_data(data: dict = Body(...)):
+    global latest_temperature, latest_humidity
 
-    # From rainfall_data.csv
-    if rainfall_df is not None and closest_district:
-        try:
-            district_col = 'Unnamed: 1'
-            print(f"Using rainfall district column: '{district_col}'")
-            row = rainfall_df[rainfall_df[district_col].astype(str).str.strip().str.lower() == closest_district.lower()]
-            if not row.empty:
-                current_month_abbr = datetime.now().strftime("%b").upper()
-                normal_col = next((col for col in row.columns if current_month_abbr in col and 'Normal' in col), None)
-                actual_col = next((col for col in row.columns if current_month_abbr in col and 'Actual' in col), None)
-                dev_col = next((col for col in row.columns if current_month_abbr in col and '% Dev' in col), None)
+    latest_temperature = data.get("temperature")
+    latest_humidity = data.get("humidity")
 
-                if normal_col:
-                    district_insights["normal_rainfall_mm"] = row[normal_col].values[0]
-                if actual_col:
-                    district_insights["actual_rainfall_mm"] = row[actual_col].values[0]
-                if dev_col:
-                    district_insights["rainfall_dev_percent"] = row[dev_col].values[0]
-            else:
-                print(f"No row found for district '{closest_district}' in rainfall data")
-        except Exception as e:
-            print("Rainfall lookup error:", str(e))
-            print("Available columns:", rainfall_df.columns.tolist())
+    print("Received Sensor Data:", latest_temperature, latest_humidity)
 
-    # From land_use.csv — cultivable area
-    if land_use_df is not None and closest_district:
-        try:
-            district_col = 'Unnamed: 1'
-            print(f"Using land use district column: '{district_col}'")
-            row = land_use_df[land_use_df[district_col].astype(str).str.strip().str.lower() == closest_district.lower()]
-            if not row.empty:
-                # Use actual column indices from your print (adjust if needed)
-                district_insights["net_sown_area_ha"] = row.iloc[0, 2] if len(row.columns) > 2 else None
-                district_insights["fallow_lands_ha"] = row.iloc[0, 9] if len(row.columns) > 9 else None
-            else:
-                print(f"No row found for district '{closest_district}' in land use data")
-        except Exception as e:
-            print("Land use lookup error:", str(e))
-            print("Available columns:", land_use_df.columns.tolist())
+    return {"status": "success"}
 
-    # From crop_production_history.csv — historical top crops
-    historical_top = []
-    if crop_history_df is not None:
-        try:
-            # Your columns are Unnamed: 0 to Unnamed: 11
-            # Assume Unnamed: 1 is Crop, Unnamed: 2 to Unnamed: 11 are years
-            crop_history_df['recent_avg'] = crop_history_df.iloc[:, 2:12].mean(axis=1, numeric_only=True)
-            historical_top = crop_history_df.nlargest(5, 'recent_avg').iloc[:, 1].tolist()
-        except Exception as e:
-            print("Historical crops error:", str(e))
-    district_insights["historical_top_crops"] = historical_top
+@app.get("/get-sensor-data")
+async def get_sensor_data():
+    return {
+        "temperature": latest_temperature,
+        "humidity": latest_humidity
+    }
 
-    # Predict crop
-    crop_prediction = None
-    if model is not None:
-        try:
-            input_data = [[n, p, k, temp, humidity, ph, rainfall]]
-            predicted_crop = model.predict(input_data)[0]
-            probabilities = model.predict_proba(input_data)[0]
-            top_prob = max(probabilities) * 100
-            crop_prediction = {
-                "recommended_crop": predicted_crop,
-                "confidence": round(top_prob, 1)
-            }
-            print(f"Predicted: {predicted_crop} ({top_prob:.1f}%)")
-        except Exception as e:
-            print("Prediction error:", str(e))
+@app.get("/hardware", response_class=HTMLResponse)
+async def hardware_page(request: Request):
+    return templates.TemplateResponse("hardware.html", context={"request": request})
 
-    return JSONResponse({
-        "status": "success",
-        "message": f"Weather at {city}: {temp}°C, {humidity}% humidity, {description}",
-        "weather": weather_info,
-        "soil": soil_info,
-        "rainfall": round(rainfall, 1),
-        "district_insights": district_insights,
-        "crop_prediction": crop_prediction or {"recommended_crop": "Unable to predict", "confidence": 0}
-    })
+
+@app.post("/hardware-predict")
+async def hardware_predict(data: dict):
+
+    if model is None:
+        return {"error": "Model not loaded"}
+
+    input_df = pd.DataFrame([[ 
+        data["N"], data["P"], data["K"],
+        data["temperature"], data["humidity"],
+        data["ph"], data["rainfall"]
+    ]], columns=['N','P','K','temperature','humidity','ph','rainfall'])
+
+    # 🔥 Get probabilities
+    probabilities = model.predict_proba(input_df)[0]
+    crops = model.classes_
+
+    # 🔥 Get top 3 crops
+    top_indices = probabilities.argsort()[-3:][::-1]
+
+    top_crops = []
+    for idx in top_indices:
+        top_crops.append(crops[idx])
+
+    return {
+        "top_crops": top_crops
+    }

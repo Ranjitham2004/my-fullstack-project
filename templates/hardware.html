@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hardware Crop Recommendation</title>
+</head>
+<body style="text-align:center; font-family:Arial;">
+
+    <h2>🌱 Hardware Based Crop Recommendation</h2>
+
+    <h3>📡 Sensor Data</h3>
+    <p>Temperature: <span id="temp">--</span> °C</p>
+    <p>Humidity: <span id="hum">--</span> %</p>
+
+    <h3>✍️ Enter Remaining Values</h3>
+
+    <input type="number" id="n" placeholder="Nitrogen"><br><br>
+    <input type="number" id="p" placeholder="Phosphorus"><br><br>
+    <input type="number" id="k" placeholder="Potassium"><br><br>
+    <input type="number" id="ph" placeholder="pH"><br><br>
+    <input type="number" id="rainfall" placeholder="Rainfall"><br><br>
+
+    <button onclick="predict()">Get Crop Recommendation</button>
+
+    <div id="result" style="margin-top:20px;"></div>
+
+<script>
+// Fetch sensor data
+async function loadSensorData() {
+    const res = await fetch("/get-sensor-data");
+    const data = await res.json();
+
+    document.getElementById("temp").innerText = data.temperature;
+    document.getElementById("hum").innerText = data.humidity;
+}
+
+// Predict crop
+async function predict() {
+    const data = {
+        temperature: parseFloat(document.getElementById("temp").innerText),
+        humidity: parseFloat(document.getElementById("hum").innerText),
+        N: parseFloat(document.getElementById("n").value),
+        P: parseFloat(document.getElementById("p").value),
+        K: parseFloat(document.getElementById("k").value),
+        ph: parseFloat(document.getElementById("ph").value),
+        rainfall: parseFloat(document.getElementById("rainfall").value)
+    };
+
+    const res = await fetch("/hardware-predict", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+
+    let html = "";
+
+    result.top_crops.forEach((crop, index) => {
+        html += `
+            <div style="margin:10px; padding:10px; border:1px solid #ccc; border-radius:8px;">
+                <h4>${index === 0 ? "🌟 Best Crop" : "🌱 Option " + (index+1)}</h4>
+                <h3 style="color:green">${crop}</h3>
+            </div>
+        `;
+    });
+
+    document.getElementById("result").innerHTML = html;
+}
+
+// Load sensor values every 3 sec
+setInterval(loadSensorData, 3000);
+loadSensorData();
+</script>
+
+</body>
+</html>
+
